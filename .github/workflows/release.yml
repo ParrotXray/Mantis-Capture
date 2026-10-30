@@ -1,6 +1,9 @@
 name: Release
 
 on:
+  # PRs only build the plugin (catches compile errors against the real
+  # Suricata headers before merge); nothing is published.
+  pull_request:
   release:
     types: [published]
   workflow_dispatch:
@@ -43,7 +46,15 @@ jobs:
       - name: Build mantis-capture.so
         run: make SURICATA_SRC="$PWD/suricata"
 
+      - name: Upload plugin as workflow artifact (PR only)
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mantis-capture.so
+          path: build/mantis-capture.so
+
       - name: Download Suricata executable via apt
+        if: github.event_name != 'pull_request'
         run: |
           sudo add-apt-repository ppa:oisf/suricata-stable -y
           sudo apt-get update
@@ -57,6 +68,7 @@ jobs:
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Stage release assets
+        if: github.event_name != 'pull_request'
         run: |
           mkdir -p dist
           cp build/mantis-capture.so dist/
@@ -64,6 +76,7 @@ jobs:
           mv suricata-bin dist/suricata
 
       - name: Upload assets to the release
+        if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
