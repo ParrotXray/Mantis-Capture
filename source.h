@@ -13,10 +13,11 @@ typedef enum MantisDirection_ {
 } MantisDirection;
 
 /* Handed to ReceiveMantisThreadInit as `initdata`. Built by runmode.c from
- * the parsed --capture-plugin-args string, one instance per direction. */
+ * the parsed --capture-plugin-args string, one instance per ring. */
 typedef struct MantisThreadInitData_ {
     int ring_fd;
     MantisDirection direction;
+    int index; /* position within its direction, i.e. Mantis's queue_id */
 } MantisThreadInitData;
 
 /* `slot` is the TmmId this module should register itself into -- passed

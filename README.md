@@ -28,3 +28,16 @@ make SURICATA_SRC=/path/to/suricata
 mkdir -p /path/to/Mantis/lib/suricata
 cp mantis-capture.so /path/to/Mantis/lib/suricata/mantis-capture.so
 ```
+
+## What the plugin provides
+
+- **Capture plugin `mantis-capture`** (`runmode.c`, `source.c`): reads packets from
+  shared-memory rings Mantis fills from its AF_XDP sockets, one ring per
+  (direction, queue_id), each consumed by its own `workers`-runmode thread.
+- **EVE filetype `mantis-eve`** (`eve.c`): selected with `filetype: mantis-eve` under
+  `outputs: - eve-log:`; writes every EVE record into a shared-memory event ring Mantis
+  consumes, replacing the old `unix_stream` socket. Non-threaded EVE only.
+
+Both get their memfds from `--capture-plugin-args`:
+`ig_fd=N[,ig_fd=N...],eg_fd=N[,eg_fd=N...],ev_fd=N` (ring fds in queue_id order).
+Ring layout: `mantis_ring.h`.

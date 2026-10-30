@@ -42,6 +42,7 @@ static const char *MantisLiveDevName(MantisDirection direction)
 
 typedef struct MantisThreadVars_ {
     MantisDirection direction;
+    int index;
     LiveDevice *livedev;
 
     void *map_base;
@@ -96,6 +97,7 @@ static TmEcode ReceiveMantisThreadInit(ThreadVars *tv, const void *initdata, voi
         return TM_ECODE_FAILED;
     }
     mtv->direction = init->direction;
+    mtv->index = init->index;
     mtv->livedev = livedev;
     mtv->map_base = map;
     mtv->map_size = (uint64_t)st.st_size;
@@ -127,8 +129,9 @@ static TmEcode ReceiveMantisThreadDeinit(ThreadVars *tv, void *data)
 static void ReceiveMantisThreadExitPrintStats(ThreadVars *tv, void *data)
 {
     MantisThreadVars *mtv = (MantisThreadVars *)data;
-    SCLogInfo("mantis-capture (%s): pkts=%" PRIu64 " bytes=%" PRIu64 " drops=%" PRIu64,
-            mtv->direction == MANTIS_DIR_INGRESS ? "ingress" : "egress", mtv->pkts, mtv->bytes, mtv->drops);
+    SCLogInfo("mantis-capture (%s #%d): pkts=%" PRIu64 " bytes=%" PRIu64 " drops=%" PRIu64,
+            mtv->direction == MANTIS_DIR_INGRESS ? "ingress" : "egress", mtv->index, mtv->pkts, mtv->bytes,
+            mtv->drops);
 }
 
 /* PktAcqLoop: called once by the thread-management framework, expected to
