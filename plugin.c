@@ -9,6 +9,7 @@
 #include "suricata-common.h"
 #include "util-debug.h"
 
+#include "eve.h"
 #include "runmode.h"
 #include "source.h"
 
@@ -32,6 +33,11 @@ static void SCPluginInit(void)
     plugin->Init = MantisPluginInit;
     plugin->GetDefaultMode = MantisCaptureGetDefaultRunMode;
     SCPluginRegisterCapture(plugin);
+
+    /* Registered unconditionally so it already exists when Suricata sets
+     * up its EVE outputs; it only needs ev_fd once actually selected via
+     * `filetype: mantis-eve`. */
+    MantisEveRegister();
 }
 
 const SCPlugin PluginRegistration = {

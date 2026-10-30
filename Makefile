@@ -6,7 +6,7 @@ CPPFLAGS = -DHAVE_CONFIG_H -I$(SURICATA_SRC) -I$(SURICATA_SRC)/src
 
 BUILD_DIR = build
 
-SRCS = plugin.c runmode.c source.c
+SRCS = plugin.c runmode.c source.c eve.c
 OBJS = $(addprefix $(BUILD_DIR)/,$(SRCS:.c=.o))
 
 TARGET = $(BUILD_DIR)/mantis-capture.so

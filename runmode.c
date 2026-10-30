@@ -29,6 +29,8 @@
  * "ig_fd=12,ig_fd=13,eg_fd=14,eg_fd=15" -- the memfd numbers of the
  * ingress/egress rings, inherited by the suricata child process. The old
  * single-pair form "ig_fd=12,eg_fd=13" is the one-queue case of this.
+ * An optional "ev_fd=N" names the EVE event ring the mantis-eve filetype
+ * (eve.c) writes alert records into.
  */
 
 #include "suricata-common.h"
@@ -49,6 +51,7 @@ static MantisThreadInitData g_ingress[MANTIS_MAX_RINGS];
 static MantisThreadInitData g_egress[MANTIS_MAX_RINGS];
 static int g_ingress_count = 0;
 static int g_egress_count = 0;
+static int g_event_fd = -1;
 
 static int MantisParseFd(const char *value, int *out)
 {
@@ -103,7 +106,7 @@ int MantisRunModeSetArgs(const char *args)
         const char *key = tok;
 
         int fd;
-        if (strcmp(key, "ig_fd") == 0 || strcmp(key, "eg_fd") == 0) {
+        if (strcmp(key, "ig_fd") == 0 || strcmp(key, "eg_fd") == 0 || strcmp(key, "ev_fd") == 0) {
             if (MantisParseFd(eq + 1, &fd) != 0) {
                 SCLogError("mantis-capture: invalid fd \"%s\" for %s", eq + 1, key);
                 rc = -1;
@@ -113,6 +116,10 @@ int MantisRunModeSetArgs(const char *args)
             continue;
         }
 
+        if (strcmp(key, "ev_fd") == 0) {
+            g_event_fd = fd;
+            continue;
+        }
         if (strcmp(key, "ig_fd") == 0) {
             rc = MantisAddRing(g_ingress, &g_ingress_count, MANTIS_DIR_INGRESS, fd);
         } else {
@@ -132,6 +139,11 @@ int MantisRunModeSetArgs(const char *args)
         return -1;
     }
     return 0;
+}
+
+int MantisRunModeGetEventFd(void)
+{
+    return g_event_fd;
 }
 
 static int SpawnMantisThread(MantisThreadInitData *initdata)
