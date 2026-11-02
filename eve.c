@@ -18,6 +18,12 @@
  * A record that does not fit in one slot is dropped and counted, never
  * truncated: a truncated JSON record would just fail to parse on the
  * Mantis side. Same for a full ring -- Write must not block a worker.
+ *
+ * Drops are reported while running, not only in Deinit: the first one at
+ * once, then at most one summary line per MANTIS_EVE_DROP_LOG_INTERVAL_NS
+ * covering the drops since the previous line (the same pattern Mantis
+ * uses for its packet rings). The check runs inside Write, so drops at
+ * the tail of a burst are reported with the next record, or by Deinit.
  */
 
 #include "suricata-common.h"
@@ -29,6 +35,7 @@
 #include <pthread.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <time.h>
 
 #include "eve.h"
 #include "mantis_ring.h"
@@ -44,7 +51,21 @@ typedef struct MantisEveContext_ {
     uint64_t records;
     uint64_t drops_full;
     uint64_t drops_oversize;
+    /* Totals already covered by a periodic drop line, and when it was
+     * written (CLOCK_MONOTONIC ns, 0 = never). */
+    uint64_t drops_full_reported;
+    uint64_t drops_oversize_reported;
+    uint64_t drops_last_report_ns;
 } MantisEveContext;
+
+#define MANTIS_EVE_DROP_LOG_INTERVAL_NS (5ULL * 1000000000ULL)
+
+static uint64_t MantisEveNowNs(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+}
 
 static int MantisEveInit(const SCConfNode *conf, const bool threaded, void **init_data)
 {
@@ -130,20 +151,38 @@ static int MantisEveWrite(const char *buffer, const int buffer_len, const void *
     }
 
     uint32_t max_len = ctx->hdr->slot_size - (uint32_t)sizeof(uint32_t);
+    uint64_t new_full = 0, new_oversize = 0;
     pthread_mutex_lock(&ctx->lock);
     if ((uint32_t)buffer_len > max_len) {
-        /* Log only the first one; the total is reported in Deinit. */
-        if (ctx->drops_oversize++ == 0) {
-            SCLogWarning("mantis-capture: EVE record of %d bytes exceeds event slot payload of %u bytes, "
-                         "dropped (raise event_slot_size)",
-                    buffer_len, max_len);
-        }
+        ctx->drops_oversize++;
     } else if (MantisRingPush(ctx->hdr, (const uint8_t *)buffer, (uint32_t)buffer_len)) {
         ctx->records++;
     } else {
         ctx->drops_full++;
     }
+    if (ctx->drops_full != ctx->drops_full_reported || ctx->drops_oversize != ctx->drops_oversize_reported) {
+        uint64_t now = MantisEveNowNs();
+        if (ctx->drops_last_report_ns == 0 || now - ctx->drops_last_report_ns >= MANTIS_EVE_DROP_LOG_INTERVAL_NS) {
+            new_full = ctx->drops_full - ctx->drops_full_reported;
+            new_oversize = ctx->drops_oversize - ctx->drops_oversize_reported;
+            ctx->drops_full_reported = ctx->drops_full;
+            ctx->drops_oversize_reported = ctx->drops_oversize;
+            ctx->drops_last_report_ns = now;
+        }
+    }
     pthread_mutex_unlock(&ctx->lock);
+
+    /* Logged outside the lock so other workers' pushes do not wait on it. */
+    if (new_full > 0) {
+        SCLogWarning("mantis-capture: event ring full, %" PRIu64 " EVE records dropped since the last report "
+                     "(Mantis is not draining fast enough, or raise event_ring_slots)",
+                new_full);
+    }
+    if (new_oversize > 0) {
+        SCLogWarning("mantis-capture: %" PRIu64 " EVE records larger than the %u-byte event slot payload "
+                     "dropped since the last report (raise event_slot_size)",
+                new_oversize, max_len);
+    }
     return 0;
 }
 
